@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Filter, type SortKey, type Todo } from "@/types/todo";
+import { todosApi } from "@/lib/api";
 
 const STORAGE_KEY = "todos";
 
@@ -69,33 +70,65 @@ export function useTodos() {
     }
   }, [todos, loaded]);
 
+  // Fetch from MongoDB on initial mount and merge with localStorage
+  const hasFetchedRef = useRef(false);
+  useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+
+    todosApi.getAll().then((remoteTodos) => {
+      if (!remoteTodos || remoteTodos.length === 0) {
+        // No remote data — push localStorage to MongoDB
+        setTodos((current) => {
+          if (current.length > 0) {
+            todosApi.syncAll(current);
+          }
+          return current;
+        });
+        return;
+      }
+
+      // Use remote data as source of truth
+      const merged: Todo[] = remoteTodos.map(({ order: _, ...rest }) => rest);
+      setTodos(merged);
+    });
+  }, []);
+
   const addTodo = useCallback((text: string, createdAt?: string, tags?: string[]) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    setTodos((prev) => [
-      {
-        id: crypto.randomUUID(),
-        text: trimmed,
-        completed: false,
-        createdAt: createdAt || todayString(),
-        completedAt: null,
-        tags: tags ?? [],
-      },
-      ...prev,
-    ]);
+    const newTodo: Todo = {
+      id: crypto.randomUUID(),
+      text: trimmed,
+      completed: false,
+      createdAt: createdAt || todayString(),
+      completedAt: null,
+      tags: tags ?? [],
+    };
+    setTodos((prev) => {
+      const next = [newTodo, ...prev];
+      todosApi.create(newTodo, 0);
+      // Update order for existing items shifted down
+      todosApi.reorder(next.map((t, i) => ({ id: t.id, order: i })));
+      return next;
+    });
   }, []);
 
   const toggleTodo = useCallback((id: string) => {
     setTodos((prev) =>
-      prev.map((todo) =>
-        todo.id === id
-          ? {
-              ...todo,
-              completed: !todo.completed,
-              completedAt: !todo.completed ? todayString() : null,
-            }
-          : todo
-      )
+      prev.map((todo) => {
+        if (todo.id !== id) return todo;
+        const updated = {
+          ...todo,
+          completed: !todo.completed,
+          completedAt: !todo.completed ? todayString() : null,
+        };
+        todosApi.update(id, {
+          completed: updated.completed,
+          completedAt: updated.completedAt,
+        });
+        return updated;
+      })
     );
   }, []);
 
@@ -105,6 +138,7 @@ export function useTodos() {
         todo.id === id ? { ...todo, completedAt: date } : todo
       )
     );
+    todosApi.update(id, { completedAt: date });
   }, []);
 
   const updateTodo = useCallback(
@@ -115,6 +149,7 @@ export function useTodos() {
           todo.id === id ? { ...todo, ...updates } : todo
         )
       );
+      todosApi.update(id, updates);
     },
     [pushUndo]
   );
@@ -122,20 +157,24 @@ export function useTodos() {
   const deleteTodo = useCallback((id: string) => {
     pushUndo();
     setTodos((prev) => prev.filter((todo) => todo.id !== id));
+    todosApi.remove(id);
   }, [pushUndo]);
 
   const deleteCompleted = useCallback(() => {
     pushUndo();
     setTodos((prev) => prev.filter((todo) => !todo.completed));
+    todosApi.deleteCompleted();
   }, [pushUndo]);
 
   const completeAll = useCallback(() => {
     pushUndo();
-    setTodos((prev) =>
-      prev.map((todo) =>
+    setTodos((prev) => {
+      const next = prev.map((todo) =>
         todo.completed ? todo : { ...todo, completed: true, completedAt: todayString() }
-      )
-    );
+      );
+      todosApi.syncAll(next);
+      return next;
+    });
   }, [pushUndo]);
 
   const undo = useCallback(() => {
@@ -145,6 +184,7 @@ export function useTodos() {
     undoStackRef.current = stack.slice(0, -1);
     setCanUndo(undoStackRef.current.length > 0);
     setTodos(prev);
+    todosApi.syncAll(prev);
   }, []);
 
   const reorderTodos = useCallback((activeId: string, overId: string) => {
@@ -155,6 +195,7 @@ export function useTodos() {
       const next = [...prev];
       const [moved] = next.splice(oldIndex, 1);
       next.splice(newIndex, 0, moved);
+      todosApi.reorder(next.map((t, i) => ({ id: t.id, order: i })));
       return next;
     });
   }, []);

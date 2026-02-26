@@ -34,4 +34,5 @@ jobs:
             --project todo-488607 \
             --region asia-northeast1 \
             --allow-unauthenticated \
+            --set-env-vars "MONGODB_URI=${{ secrets.MONGODB_URI }}" \
             --quiet

@@ -1,4 +1,18 @@
 import "@testing-library/jest-dom/vitest";
+import { vi } from "vitest";
+
+// Mock API module — all calls become no-ops returning resolved promises
+vi.mock("@/lib/api", () => ({
+  todosApi: {
+    getAll: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue(undefined),
+    update: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+    deleteCompleted: vi.fn().mockResolvedValue(undefined),
+    syncAll: vi.fn().mockResolvedValue(undefined),
+    reorder: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
 // Mock matchMedia (required by next-themes)
 Object.defineProperty(window, "matchMedia", {

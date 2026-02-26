@@ -1,6 +1,6 @@
-import mongoose, { Schema, type Document } from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
-export interface ITodo extends Document {
+export interface ITodo {
   _id: string;
   text: string;
   completed: boolean;

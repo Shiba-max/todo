@@ -35,7 +35,8 @@ describe("TodoInput", () => {
 
     expect(onAdd).toHaveBeenCalledWith(
       "新しいタスク",
-      expect.any(String)
+      expect.any(String),
+      undefined
     );
   });
 
@@ -84,6 +85,113 @@ describe("TodoInput", () => {
     const input = screen.getByPlaceholderText("新しいTODOを入力...");
     await user.type(input, "Enterタスク{enter}");
 
-    expect(onAdd).toHaveBeenCalledWith("Enterタスク", expect.any(String));
+    expect(onAdd).toHaveBeenCalledWith("Enterタスク", expect.any(String), undefined);
+  });
+
+  describe("タグ入力", () => {
+    it("タグ入力フィールドが表示される", () => {
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      expect(screen.getByText("タグ")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("タグを入力してEnter...")
+      ).toBeInTheDocument();
+    });
+
+    it("Enterでタグを追加できる", async () => {
+      const user = userEvent.setup();
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.type(tagInput, "仕事{enter}");
+
+      expect(screen.getByText("仕事")).toBeInTheDocument();
+    });
+
+    it("カンマ区切りで複数タグを追加できる", async () => {
+      const user = userEvent.setup();
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.type(tagInput, "仕事,個人{enter}");
+
+      expect(screen.getByText("仕事")).toBeInTheDocument();
+      expect(screen.getByText("個人")).toBeInTheDocument();
+    });
+
+    it("重複するタグは追加されない", async () => {
+      const user = userEvent.setup();
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.type(tagInput, "仕事{enter}");
+      await user.type(tagInput, "仕事{enter}");
+
+      const badges = screen.getAllByText("仕事");
+      expect(badges).toHaveLength(1);
+    });
+
+    it("タグを削除できる", async () => {
+      const user = userEvent.setup();
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.type(tagInput, "仕事{enter}");
+
+      expect(screen.getByText("仕事")).toBeInTheDocument();
+
+      const deleteButton = screen.getByLabelText('タグ「仕事」を削除');
+      await user.click(deleteButton);
+
+      expect(screen.queryByText("仕事")).not.toBeInTheDocument();
+    });
+
+    it("タグ付きで送信するとonAddにタグが渡される", async () => {
+      const user = userEvent.setup();
+      const onAdd = vi.fn();
+      render(<TodoInput onAdd={onAdd} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.type(tagInput, "仕事{enter}");
+      await user.type(tagInput, "重要{enter}");
+
+      const textInput = screen.getByPlaceholderText("新しいTODOを入力...");
+      await user.type(textInput, "タグ付きタスク");
+      await user.click(screen.getByRole("button", { name: /追加/ }));
+
+      expect(onAdd).toHaveBeenCalledWith(
+        "タグ付きタスク",
+        expect.any(String),
+        ["仕事", "重要"]
+      );
+    });
+
+    it("送信後にタグがクリアされる", async () => {
+      const user = userEvent.setup();
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.type(tagInput, "仕事{enter}");
+
+      expect(screen.getByText("仕事")).toBeInTheDocument();
+
+      const textInput = screen.getByPlaceholderText("新しいTODOを入力...");
+      await user.type(textInput, "タスク");
+      await user.click(screen.getByRole("button", { name: /追加/ }));
+
+      expect(screen.queryByLabelText('タグ「仕事」を削除')).not.toBeInTheDocument();
+    });
+
+    it("空のタグ入力でEnterを押してもタグが追加されない", async () => {
+      const user = userEvent.setup();
+      render(<TodoInput onAdd={vi.fn()} />);
+
+      const tagInput = screen.getByPlaceholderText("タグを入力してEnter...");
+      await user.click(tagInput);
+      await user.keyboard("{enter}");
+
+      // No tag badges should appear
+      expect(screen.queryByLabelText(/タグ「.*」を削除/)).not.toBeInTheDocument();
+    });
   });
 });

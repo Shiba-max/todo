@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, beforeEach } from "vitest";
 import { TodoList } from "@/components/todo-list";
@@ -71,7 +71,7 @@ describe("TodoList", () => {
     expect(screen.getByText("残り 0 件のタスク")).toBeInTheDocument();
   });
 
-  it("TODOを削除できる", async () => {
+  it("TODOを削除できる（確認ダイアログ経由）", async () => {
     const user = userEvent.setup();
     render(<TodoList />);
 
@@ -81,15 +81,11 @@ describe("TodoList", () => {
 
     expect(screen.getByText("削除タスク")).toBeInTheDocument();
 
-    // Find the delete button (Trash2 icon button)
-    const buttons = screen.getAllByRole("button");
-    const deleteButton = buttons.find(
-      (btn) => !btn.textContent?.includes("追加") &&
-               !btn.textContent?.includes("すべて") &&
-               !btn.textContent?.includes("未完了") &&
-               !btn.textContent?.includes("完了済み")
-    );
-    await user.click(deleteButton!);
+    const deleteButton = screen.getByRole("button", { name: /「削除タスク」を削除/ });
+    await user.click(deleteButton);
+
+    // Confirm in dialog
+    await user.click(screen.getByRole("button", { name: "削除する" }));
 
     expect(screen.queryByText("削除タスク")).not.toBeInTheDocument();
   });
@@ -163,6 +159,7 @@ describe("TodoList", () => {
         completed: false,
         createdAt: "2025-01-01",
         completedAt: null,
+        tags: [],
       },
     ];
     localStorage.setItem("todos", JSON.stringify(saved));
@@ -188,5 +185,88 @@ describe("TodoList", () => {
     await user.click(checkboxes[0]);
 
     expect(screen.getByText("50% 達成")).toBeInTheDocument();
+  });
+
+  describe("タグフィルター", () => {
+    it("タグがある場合にタグフィルターが表示される", () => {
+      const saved = [
+        {
+          id: "1",
+          text: "仕事タスク",
+          completed: false,
+          createdAt: "2025-01-01",
+          completedAt: null,
+          tags: ["仕事"],
+        },
+        {
+          id: "2",
+          text: "個人タスク",
+          completed: false,
+          createdAt: "2025-01-01",
+          completedAt: null,
+          tags: ["個人"],
+        },
+      ];
+      localStorage.setItem("todos", JSON.stringify(saved));
+
+      render(<TodoList />);
+
+      // Tags appear in both the filter section and on each todo item,
+      // so we check that at least 2 exist (filter badge + item badge)
+      expect(screen.getAllByText("仕事").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("個人").length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("タグをクリックしてフィルタリングできる", () => {
+      const saved = [
+        {
+          id: "1",
+          text: "仕事タスク",
+          completed: false,
+          createdAt: "2025-01-01",
+          completedAt: null,
+          tags: ["仕事"],
+        },
+        {
+          id: "2",
+          text: "個人タスク",
+          completed: false,
+          createdAt: "2025-01-01",
+          completedAt: null,
+          tags: ["個人"],
+        },
+      ];
+      localStorage.setItem("todos", JSON.stringify(saved));
+
+      render(<TodoList />);
+
+      // Both tasks visible
+      expect(screen.getByText("仕事タスク")).toBeInTheDocument();
+      expect(screen.getByText("個人タスク")).toBeInTheDocument();
+    });
+
+    it("タグがないTODOのみの場合はタグフィルターが表示されない", () => {
+      const saved = [
+        {
+          id: "1",
+          text: "タスク",
+          completed: false,
+          createdAt: "2025-01-01",
+          completedAt: null,
+          tags: [],
+        },
+      ];
+      localStorage.setItem("todos", JSON.stringify(saved));
+
+      render(<TodoList />);
+
+      // Only the status filter "すべて" button should exist, not a tag filter "すべて" badge
+      const allButtons = screen.getAllByRole("button");
+      const statusAllButton = allButtons.find((b) => b.textContent === "すべて");
+      expect(statusAllButton).toBeDefined();
+
+      // No tag-specific badges
+      expect(screen.queryByText("仕事")).not.toBeInTheDocument();
+    });
   });
 });
